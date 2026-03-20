@@ -192,7 +192,6 @@ InitTestScene*.unity*
 *.slo
 *.lo
 *.o
-*.obj
 
 # Precompiled Headers
 *.gch
