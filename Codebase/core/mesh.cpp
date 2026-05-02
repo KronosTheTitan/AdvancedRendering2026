@@ -30,9 +30,7 @@ namespace core {
                 glm::vec3(-1.0f, -1.0f, 0.0f),
                 glm::vec3(1.0f, -1.0f, 0.0f),
                 glm::vec3(-1.0f, 1.0f, 0.0f),
-                glm::vec3(1.0f, -1.0f, 0.0f),
                 glm::vec3(1.0f, 1.0f, 0.0f),
-                glm::vec3(-1.0f, 1.0f, 0.0f),
         };
 
         const glm::vec3 normals[] = {
@@ -40,18 +38,17 @@ namespace core {
                 glm::vec3(0.0f, 0.0f, 1.0f),
                 glm::vec3(0.0f, 0.0f, 1.0f),
                 glm::vec3(0.0f, 0.0f, 1.0f),
-                glm::vec3(0.0f, 0.0f, 1.0f),
-                glm::vec3(0.0f, 0.0f, 1.0f)
         };
         const glm::vec2 uvs[] = {
                 glm::vec2(0, 0),
                 glm::vec2(1, 0),
                 glm::vec2(0, 1),
-                glm::vec2(1, 0),
                 glm::vec2(1, 1),
-                glm::vec2(0, 1)
         };
-        const std::vector<GLuint> indices = {0, 1, 2, 3, 4, 5};
+        const std::vector<GLuint> indices = {
+            0, 1, 2,
+            2, 1, 3,
+        };
 
         std::vector<Vertex> vertexVector;
         vertexVector.reserve(6);

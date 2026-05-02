@@ -5,8 +5,12 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <iostream>
+#include <stb_image.h>
+
 #include "core/mesh.h"
 #include "core/assimpLoader.h"
+#include "core/Shader.h"
 #include "core/texture.h"
 
 //#define MAC_CLION
@@ -39,34 +43,6 @@ void framebufferSizeCallback(GLFWwindow *window,
     g_width = width;
     g_height = height;
     glViewport(0, 0, width, height);
-}
-
-std::string readFileToString(const std::string &filePath) {
-    std::ifstream fileStream(filePath, std::ios::in);
-    if (!fileStream.is_open()) {
-        printf("Could not open file: %s\n", filePath.c_str());
-        return "";
-    }
-    std::stringstream buffer;
-    buffer << fileStream.rdbuf();
-    return buffer.str();
-}
-
-GLuint generateShader(const std::string &shaderPath, GLuint shaderType) {
-    printf("Loading shader: %s\n", shaderPath.c_str());
-    const std::string shaderText = readFileToString(shaderPath);
-    const GLuint shader = glCreateShader(shaderType);
-    const char *s_str = shaderText.c_str();
-    glShaderSource(shader, 1, &s_str, nullptr);
-    glCompileShader(shader);
-    GLint success = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        char infoLog[512];
-        glGetShaderInfoLog(shader, 512, NULL, infoLog);
-        printf("Error! Shader issue [%s]: %s\n", shaderPath.c_str(), infoLog);
-    }
-    return shader;
 }
 
 int main() {
@@ -110,41 +86,20 @@ int main() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    const GLuint modelVertexShader = generateShader("shaders/modelVertex.vs", GL_VERTEX_SHADER);
-    const GLuint fragmentShader = generateShader("shaders/fragment.fs", GL_FRAGMENT_SHADER);
-    const GLuint textureShader = generateShader("shaders/texture.fs", GL_FRAGMENT_SHADER);
+    stbi_set_flip_vertically_on_load(true);
 
-    int success;
-    char infoLog[512];
-    const unsigned int modelShaderProgram = glCreateProgram();
-    glAttachShader(modelShaderProgram, modelVertexShader);
-    glAttachShader(modelShaderProgram, fragmentShader);
-    glLinkProgram(modelShaderProgram);
-    glGetProgramiv(modelShaderProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(modelShaderProgram, 512, NULL, infoLog);
-        printf("Error! Making Shader Program: %s\n", infoLog);
-    }
-    const unsigned int textureShaderProgram = glCreateProgram();
-    glAttachShader(textureShaderProgram, modelVertexShader);
-    glAttachShader(textureShaderProgram, textureShader);
-    glLinkProgram(textureShaderProgram);
-    glGetProgramiv(textureShaderProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(textureShaderProgram, 512, NULL, infoLog);
-        printf("Error! Making Shader Program: %s\n", infoLog);
-    }
-
-    glDeleteShader(modelVertexShader);
-    glDeleteShader(fragmentShader);
-    glDeleteShader(textureShader);
+    Shader* geometryShaderProgram = new Shader("shaders/deferred_geometry_vertex.vsh","shaders/deferred_geometry_fragment.fsh");
+    Shader* lightingShaderProgram = new Shader("shaders/deferred_lighting_vertex.vsh","shaders/deferred_lighting_fragment.fsh");
+    Shader* lightBoxShaderProgram = new Shader("shaders/deferred_lighting_vertex.vsh","shaders/deferred_lighting_fragment.fsh");
 
     core::Mesh quad = core::Mesh::generateQuad();
     core::Model quadModel({quad});
-    quadModel.translate(glm::vec3(0,0,-2.5));
-    quadModel.scale(glm::vec3(5, 5, 1));
+    //quadModel.translate(glm::vec3(0,0,-2.5));
+    //quadModel.scale(glm::vec3(5, 5, 1));
 
-    core::Model suzanne = core::AssimpLoader::loadModel("models/nonormalmonkey.obj");
+    core::Model suzanne = core::AssimpLoader::loadModel("models/sphere_flat.obj");
+    core::Model box = core::AssimpLoader::loadModel("models/box.obj");
+
     core::Texture cmgtGatoTexture("textures/CMGaTo_crop.png");
 
     glm::vec4 clearColor = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f);
@@ -162,14 +117,81 @@ int main() {
     glm::mat4 view = glm::lookAt(cameraPos, cameraTarget, cameraUp);
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), static_cast<float>(g_width) / static_cast<float>(g_height), 0.1f, 100.0f);
 
-    GLint mvpMatrixUniform = glGetUniformLocation(modelShaderProgram, "mvpMatrix");
-    GLint textureModelUniform = glGetUniformLocation(textureShaderProgram, "mvpMatrix");
-    GLint textureUniform = glGetUniformLocation(textureShaderProgram, "text");
+    GLint mvpMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "mvpMatrix");
+
+    // configure g-buffer framebuffer
+    // ------------------------------
+    unsigned int gBuffer;
+    glGenFramebuffers(1, &gBuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+    unsigned int gPosition, gNormal, gAlbedoSpec;
+    // position color buffer
+    glGenTextures(1, &gPosition);
+    glBindTexture(GL_TEXTURE_2D, gPosition);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, g_width, g_height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
+    // normal color buffer
+    glGenTextures(1, &gNormal);
+    glBindTexture(GL_TEXTURE_2D, gNormal);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, g_width, g_height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+    // color + specular color buffer
+    glGenTextures(1, &gAlbedoSpec);
+    glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_width, g_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
+    // tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
+    unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+    glDrawBuffers(3, attachments);
+    // create and attach depth buffer (renderbuffer)
+    unsigned int rboDepth;
+    glGenRenderbuffers(1, &rboDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, g_width, g_height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+    // finally check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     double currentTime = glfwGetTime();
     double finishFrameTime = 0.0;
     float deltaTime = 0.0f;
     float rotationStrength = 100.0f;
+
+    // lighting info
+    // -------------
+    const unsigned int NR_LIGHTS = 32;
+    std::vector<glm::vec3> lightPositions;
+    std::vector<glm::vec3> lightColors;
+    srand(13);
+    for (unsigned int i = 0; i < NR_LIGHTS; i++)
+    {
+        // calculate slightly random offsets
+        float xPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 3.0);
+        float yPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 4.0);
+        float zPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 3.0);
+        lightPositions.push_back(glm::vec3(xPos, yPos, zPos));
+        // also calculate random color
+        float rColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
+        float gColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
+        float bColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
+        lightColors.push_back(glm::vec3(rColor, gColor, bColor));
+    }
+
+    // shader configuration
+    // --------------------
+    lightingShaderProgram->Use();
+    glUniform1i(glGetUniformLocation(lightingShaderProgram->shaderProgram, "gPosition"), 0);
+    glUniform1i(glGetUniformLocation(lightingShaderProgram->shaderProgram, "gNormal"), 1);
+    glUniform1i(glGetUniformLocation(lightingShaderProgram->shaderProgram, "gAlbedoSpec"), 2);
+
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -183,19 +205,79 @@ int main() {
         processInput(window);
         suzanne.rotate(glm::vec3(0.0f, 1.0f, 0.0f), glm::radians(rotationStrength) * static_cast<float>(deltaTime));
 
-        glUseProgram(textureShaderProgram);
-        glUniformMatrix4fv(textureModelUniform, 1, GL_FALSE, glm::value_ptr(projection * view * quadModel.getModelMatrix()));
-        glActiveTexture(GL_TEXTURE0);
-        glUniform1i(textureUniform, 0);
-        glBindTexture(GL_TEXTURE_2D, cmgtGatoTexture.getId());
-        quadModel.render();
-        glBindVertexArray(0);
-        glActiveTexture(GL_TEXTURE0);
+        // render
+        // ------
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(modelShaderProgram);
+        // 1. geometry pass: render scene's geometry/color data into gbuffer
+        // -----------------------------------------------------------------
+        glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        geometryShaderProgram->Use();
         glUniformMatrix4fv(mvpMatrixUniform, 1, GL_FALSE, glm::value_ptr(projection * view * suzanne.getModelMatrix()));
         suzanne.render();
         glBindVertexArray(0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // 2. lighting pass: calculate lighting by iterating over a screen filled quad pixel-by-pixel using the gbuffer's content.
+        // -----------------------------------------------------------------------------------------------------------------------
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        lightingShaderProgram->Use();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gPosition);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, gNormal);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+
+        // send light relevant uniforms
+        for (unsigned int i = 0; i < lightPositions.size(); i++)
+        {
+            lightingShaderProgram->setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
+            lightingShaderProgram->setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
+            // update attenuation parameters and calculate radius
+            const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
+            const float linear = 0.7f;
+            const float quadratic = 1.8f;
+            lightingShaderProgram->setFloat("lights[" + std::to_string(i) + "].Linear", linear);
+            lightingShaderProgram->setFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
+            // then calculate radius of light volume/sphere
+            const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
+            float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+            lightingShaderProgram->setFloat("lights[" + std::to_string(i) + "].Radius", radius);
+        }
+        glUniform3f(glGetUniformLocation(lightingShaderProgram->shaderProgram, "viewPos"), cameraPos.x, cameraPos.y, cameraPos.z);
+
+        quadModel.render();
+
+        // 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
+        // ----------------------------------------------------------------------------------
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
+        // blit to default framebuffer. Note that this may or may not work as the internal formats of both the FBO and default framebuffer have to match.
+        // the internal formats are implementation defined. This works on all of my systems, but if it doesn't on yours you'll likely have to write to the
+        // depth buffer in another shader stage (or somehow see to match the default framebuffer's internal format with the FBO's internal format).
+        glBlitFramebuffer(0, 0, g_width, g_height, 0, 0, g_width, g_height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // 3. render lights on top of scene
+        // --------------------------------
+        lightBoxShaderProgram->Use();
+        GLint lightBoxMvpMatrixUniform = glGetUniformLocation(lightBoxShaderProgram->shaderProgram, "mvp");
+        for (unsigned int i = 0; i < lightPositions.size(); i++)
+        {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, lightPositions[i]);
+            model = glm::scale(model, glm::vec3(0.125f));
+            shaderLightBox.setMat4("model", model);
+
+            glUniformMatrix4fv(lightBoxMvpMatrixUniform, 1, GL_FALSE, glm::value_ptr(projection * view * box.getModelMatrix()));
+            shaderLightBox.setVec3("lightColor", lightColors[i]);
+            box.render();
+        }
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -207,7 +289,8 @@ int main() {
         currentTime = finishFrameTime;
     }
 
-    glDeleteProgram(modelShaderProgram);
+    glDeleteProgram(geometryShaderProgram->shaderProgram);
+    glDeleteShader(lightingShaderProgram->shaderProgram);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
