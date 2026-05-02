@@ -272,10 +272,10 @@ int main() {
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, lightPositions[i]);
             model = glm::scale(model, glm::vec3(0.125f));
-            shaderLightBox.setMat4("model", model);
+            //shaderLightBox.setMat4("model", model);
 
             glUniformMatrix4fv(lightBoxMvpMatrixUniform, 1, GL_FALSE, glm::value_ptr(projection * view * box.getModelMatrix()));
-            shaderLightBox.setVec3("lightColor", lightColors[i]);
+            //shaderLightBox.setVec3("lightColor", lightColors[i]);
             box.render();
         }
 
