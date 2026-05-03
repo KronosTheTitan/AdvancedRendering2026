@@ -119,12 +119,18 @@ int main() {
 
     GLint mvpMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "mvpMatrix");
 
+    GLint modelMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "model");
+    GLint viewMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "view");
+    GLint projectionMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "projection");
+
     // configure g-buffer framebuffer
     // ------------------------------
     unsigned int gBuffer;
     glGenFramebuffers(1, &gBuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
-    unsigned int gPosition, gNormal, gAlbedoSpec;
+    unsigned int gPosition;
+    unsigned int gNormal;
+    unsigned int gAlbedoSpec;
     // position color buffer
     glGenTextures(1, &gPosition);
     glBindTexture(GL_TEXTURE_2D, gPosition);
@@ -216,7 +222,10 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         geometryShaderProgram->Use();
-        glUniformMatrix4fv(mvpMatrixUniform, 1, GL_FALSE, glm::value_ptr(projection * view * suzanne.getModelMatrix()));
+        glUniformMatrix4fv(modelMatrixUniform, 1, GL_FALSE, glm::value_ptr(suzanne.getModelMatrix()));
+        glUniformMatrix4fv(viewMatrixUniform, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(projectionMatrixUniform, 1, GL_FALSE, glm::value_ptr(projection));
+
         suzanne.render();
         glBindVertexArray(0);
 
