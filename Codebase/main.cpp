@@ -100,8 +100,9 @@ int main() {
     core::Model suzanne = core::AssimpLoader::loadModel("models/sphere_flat.obj");
     core::Model box = core::AssimpLoader::loadModel("models/box.obj");
 
-    int grid_width = 10;
-    int grid_height = 10;
+    int grid_width = 20;
+    int grid_height = 20;
+    float grid_spacing = 2.5f;
 
     std::vector<core::Model> spheres;
 
@@ -109,9 +110,9 @@ int main() {
     {
         for (int y = 0; y < grid_height; y++)
         {
-            core::Model sphere = core::AssimpLoader::loadModel("models/sphere.obj");
+            core::Model sphere = core::AssimpLoader::loadModel("models/sphere_flat.obj");
 
-            sphere.translate(glm::vec3(x * 2.5, 0.0f, y * 2.5));
+            sphere.translate(glm::vec3(x * grid_spacing, 0.0f, y * grid_spacing));
 
             spheres.push_back(sphere);
         }
@@ -123,8 +124,8 @@ int main() {
     glClearColor(clearColor.r,
                  clearColor.g, clearColor.b, clearColor.a);
 
-    glm::vec3 cameraPos = glm::vec3(-10.0f, 10.0f, -10.0f);
-    glm::vec3 cameraTarget = glm::vec3(12.5f, 0.0f, 12.5f);
+    glm::vec3 cameraPos = glm::vec3(-10.0f, (grid_width + grid_height) / 2, -10.0f);
+    glm::vec3 cameraTarget = glm::vec3((grid_width * grid_spacing) / 2, 0.0f, (grid_height * grid_spacing) / 2);
     glm::vec3 cameraDirection = glm::normalize(cameraPos - cameraTarget);
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
     glm::vec3 cameraRight = glm::normalize(glm::cross(up, cameraDirection));
@@ -188,21 +189,21 @@ int main() {
 
     // lighting info
     // -------------
-    const unsigned int NR_LIGHTS = 32;
+    const unsigned int NR_LIGHTS = 128;
     std::vector<glm::vec3> lightPositions;
     std::vector<glm::vec3> lightColors;
-    srand(13);
+    srand(12);
     for (unsigned int i = 0; i < NR_LIGHTS; i++)
     {
         // calculate slightly random offsets
-        float xPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 3.0);
-        float yPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 4.0);
-        float zPos = static_cast<float>(((rand() % 100) / 100.0) * 6.0 - 3.0);
+        float xPos = static_cast<float>(((rand() % 100) / 100.0) * ((grid_width * grid_spacing) + grid_spacing) - grid_spacing);
+        float yPos = static_cast<float>(((rand() % 100) / 100.0) * 5.0);
+        float zPos = static_cast<float>(((rand() % 100) / 100.0) * ((grid_height * grid_spacing) + grid_spacing) - grid_spacing);
         lightPositions.push_back(glm::vec3(xPos, yPos, zPos));
         // also calculate random color
-        float rColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
-        float gColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
-        float bColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.0
+        float rColor = static_cast<float>(((rand() % 256) / 256.0f) + 0.0); // between 0.5 and 1.0
+        float gColor = static_cast<float>(((rand() % 256) / 256.0f) + 0.0); // between 0.5 and 1.0
+        float bColor = static_cast<float>(((rand() % 256) / 256.0f) + 0.0); // between 0.5 and 1.0
         lightColors.push_back(glm::vec3(rColor, gColor, bColor));
     }
 
