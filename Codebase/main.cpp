@@ -100,14 +100,31 @@ int main() {
     core::Model suzanne = core::AssimpLoader::loadModel("models/sphere_flat.obj");
     core::Model box = core::AssimpLoader::loadModel("models/box.obj");
 
+    int grid_width = 10;
+    int grid_height = 10;
+
+    std::vector<core::Model> spheres;
+
+    for (int x = 0; x < grid_width; x++)
+    {
+        for (int y = 0; y < grid_height; y++)
+        {
+            core::Model sphere = core::AssimpLoader::loadModel("models/sphere.obj");
+
+            sphere.translate(glm::vec3(x * 2.5, 0.0f, y * 2.5));
+
+            spheres.push_back(sphere);
+        }
+    }
+
     core::Texture cmgtGatoTexture("textures/CMGaTo_crop.png");
 
     glm::vec4 clearColor = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f);
     glClearColor(clearColor.r,
                  clearColor.g, clearColor.b, clearColor.a);
 
-    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 10.0f);
-    glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 cameraPos = glm::vec3(-10.0f, 10.0f, -10.0f);
+    glm::vec3 cameraTarget = glm::vec3(12.5f, 0.0f, 12.5f);
     glm::vec3 cameraDirection = glm::normalize(cameraPos - cameraTarget);
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
     glm::vec3 cameraRight = glm::normalize(glm::cross(up, cameraDirection));
@@ -116,8 +133,6 @@ int main() {
     //VP
     glm::mat4 view = glm::lookAt(cameraPos, cameraTarget, cameraUp);
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), static_cast<float>(g_width) / static_cast<float>(g_height), 0.1f, 100.0f);
-
-    GLint mvpMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "mvpMatrix");
 
     GLint modelMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "model");
     GLint viewMatrixUniform = glGetUniformLocation(geometryShaderProgram->shaderProgram, "view");
@@ -209,7 +224,11 @@ int main() {
         ImGui::End();
 
         processInput(window);
-        suzanne.rotate(glm::vec3(0.0f, 1.0f, 0.0f), glm::radians(rotationStrength) * static_cast<float>(deltaTime));
+
+        for (int i = 0; i < spheres.size(); i++)
+        {
+            spheres[i].rotate(glm::vec3(0.0f, 1.0f, 0.0f), glm::radians(rotationStrength) * static_cast<float>(deltaTime));
+        }
 
         // render
         // ------
@@ -221,13 +240,16 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        geometryShaderProgram->Use();
-        glUniformMatrix4fv(modelMatrixUniform, 1, GL_FALSE, glm::value_ptr(suzanne.getModelMatrix()));
-        glUniformMatrix4fv(viewMatrixUniform, 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(projectionMatrixUniform, 1, GL_FALSE, glm::value_ptr(projection));
+        for (int i = 0; i < spheres.size(); i++)
+        {
+            geometryShaderProgram->Use();
+            glUniformMatrix4fv(modelMatrixUniform, 1, GL_FALSE, glm::value_ptr(spheres[i].getModelMatrix()));
+            glUniformMatrix4fv(viewMatrixUniform, 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(projectionMatrixUniform, 1, GL_FALSE, glm::value_ptr(projection));
 
-        suzanne.render();
-        glBindVertexArray(0);
+            spheres[i].render();
+            glBindVertexArray(0);
+        }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
