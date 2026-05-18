@@ -30,8 +30,8 @@
 #include <imgui_impl_opengl3.h>
 #endif
 
-int g_width = 800;
-int g_height = 600;
+int g_width = 1920;
+int g_height = 1080;
 
 void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
